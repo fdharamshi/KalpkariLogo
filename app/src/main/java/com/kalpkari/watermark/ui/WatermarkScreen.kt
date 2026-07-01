@@ -37,6 +37,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Image
@@ -44,6 +46,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -529,14 +533,21 @@ private fun EditorLayout(
                                 }
                             }
                             EditorTab.CROP -> {
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
                                     SectionLabel("Crop Preset")
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    
+                                    // Presets row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
                                         CropPreset.entries.forEach { preset ->
                                             FilterChip(
                                                 selected = preset == state.cropPreset,
                                                 onClick = {
-                                                    // Record to history before change
                                                     val startState = CropHistoryState(
                                                         preset = state.cropPreset,
                                                         scale = state.cropScale,
@@ -546,7 +557,6 @@ private fun EditorLayout(
                                                     )
                                                     undoStack.add(startState)
                                                     redoStack.clear()
-                                                    
                                                     vm.onCropPresetChanged(preset)
                                                 },
                                                 label = { Text(preset.label) },
@@ -554,60 +564,80 @@ private fun EditorLayout(
                                             )
                                         }
                                     }
-                                    
+
+                                    // Compact Editor Confirm/History Bar
                                     Row(
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            OutlinedButton(
+                                        // Cancel (Close) Icon Button
+                                        IconButton(
+                                            onClick = {
+                                                backupPreset?.let { vm.onCropPresetChanged(it) }
+                                                vm.updateCropGeometry(backupScale, backupPanX, backupPanY, backupRect)
+                                                onTabSelect(EditorTab.LOGOS)
+                                            }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Cancel",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                        }
+
+                                        // Undo / Redo in center
+                                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                            IconButton(
                                                 onClick = {
                                                     val current = CropHistoryState(state.cropPreset, state.cropScale, state.cropPanX, state.cropPanY, state.cropRect)
                                                     val previous = undoStack.removeAt(undoStack.lastIndex)
                                                     redoStack.add(current)
-                                                    
                                                     vm.onCropPresetChanged(previous.preset)
                                                     vm.updateCropGeometry(previous.scale, previous.panX, previous.panY, previous.rect)
                                                 },
-                                                enabled = undoStack.isNotEmpty(),
-                                                modifier = Modifier.height(36.dp)
+                                                enabled = undoStack.isNotEmpty()
                                             ) {
-                                                Text("Undo", color = Color.White)
+                                                Icon(
+                                                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                                                    contentDescription = "Undo",
+                                                    tint = if (undoStack.isNotEmpty()) Color.White else Color.Gray,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
                                             }
-                                            OutlinedButton(
+
+                                            IconButton(
                                                 onClick = {
                                                     val current = CropHistoryState(state.cropPreset, state.cropScale, state.cropPanX, state.cropPanY, state.cropRect)
                                                     val next = redoStack.removeAt(redoStack.lastIndex)
                                                     undoStack.add(current)
-                                                    
                                                     vm.onCropPresetChanged(next.preset)
                                                     vm.updateCropGeometry(next.scale, next.panX, next.panY, next.rect)
                                                 },
-                                                enabled = redoStack.isNotEmpty(),
-                                                modifier = Modifier.height(36.dp)
+                                                enabled = redoStack.isNotEmpty()
                                             ) {
-                                                Text("Redo", color = Color.White)
+                                                Icon(
+                                                    imageVector = Icons.AutoMirrored.Filled.Redo,
+                                                    contentDescription = "Redo",
+                                                    tint = if (redoStack.isNotEmpty()) Color.White else Color.Gray,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
                                             }
                                         }
 
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            OutlinedButton(
-                                                onClick = {
-                                                    backupPreset?.let { vm.onCropPresetChanged(it) }
-                                                    vm.updateCropGeometry(backupScale, backupPanX, backupPanY, backupRect)
-                                                    onTabSelect(EditorTab.LOGOS)
-                                                },
-                                                modifier = Modifier.height(36.dp)
-                                            ) {
-                                                Text("Cancel", color = Color.White)
-                                            }
-                                            Button(
-                                                onClick = { onTabSelect(EditorTab.LOGOS) },
-                                                modifier = Modifier.height(36.dp)
-                                            ) {
-                                                Text("Apply")
-                                            }
+                                        // Apply (Checkmark) Icon Button
+                                        IconButton(
+                                            onClick = { onTabSelect(EditorTab.LOGOS) }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Apply",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(28.dp)
+                                            )
                                         }
                                     }
                                 }
