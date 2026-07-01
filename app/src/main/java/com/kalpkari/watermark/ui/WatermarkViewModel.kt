@@ -75,7 +75,9 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         val logos = LogoRepository.list(getApplication())
-        _state.update { it.copy(logos = logos, selectedLogo = logos.firstOrNull()) }
+        val defaultLogo = logos.firstOrNull()
+        _state.update { it.copy(logos = logos, selectedLogo = defaultLogo) }
+        defaultLogo?.let { applyLogoDefaults(it) }
         loadLogoBitmap()
     }
 
@@ -107,11 +109,53 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(error = "Unsupported media type: $mime") }
             return
         }
+        val selectedLogo = s.selectedLogo ?: s.logos.firstOrNull()
+        val pos: WatermarkPosition
+        val size: Float
+        val ox: Float
+        val oy: Float
+        if (selectedLogo != null) {
+            when (selectedLogo.id) {
+                "logo_1.png" -> {
+                    pos = WatermarkPosition.TOP_RIGHT
+                    size = 0.23f
+                    ox = -0.02f
+                    oy = -0.02f
+                }
+                "logo_4.png" -> {
+                    pos = WatermarkPosition.TOP_RIGHT
+                    size = 0.15f
+                    ox = -0.03f
+                    oy = -0.02f
+                }
+                "logo_2.png", "logo_3.png" -> {
+                    pos = WatermarkPosition.CENTER_TOP
+                    size = 0.50f
+                    ox = 0f
+                    oy = 0.05f
+                }
+                else -> {
+                    pos = WatermarkPosition.BOTTOM_RIGHT
+                    size = InstagramMargins.logoWidth
+                    ox = 0f
+                    oy = 0f
+                }
+            }
+        } else {
+            pos = WatermarkPosition.BOTTOM_RIGHT
+            size = InstagramMargins.logoWidth
+            ox = 0f
+            oy = 0f
+        }
+
         _state.update {
             it.copy(
                 mediaUri = uri, mediaType = type,
                 previewBitmap = null, loadingPreview = true,
-                offsetX = 0f, offsetY = 0f,
+                position = pos,
+                logoWidthFraction = size,
+                offsetX = ox,
+                offsetY = oy,
                 cropPreset = CropPreset.ORIGINAL,
                 cropRect = null,
                 cropScale = 1.0f,
@@ -138,6 +182,7 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onLogoSelected(logo: LogoAsset) {
         _state.update { it.copy(selectedLogo = logo, resultUri = null) }
+        applyLogoDefaults(logo)
         loadLogoBitmap()
     }
 
@@ -158,7 +203,12 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetOffsets() {
-        _state.update { it.copy(offsetX = 0f, offsetY = 0f, resultUri = null) }
+        val logo = _state.value.selectedLogo
+        if (logo != null) {
+            applyLogoDefaults(logo)
+        } else {
+            _state.update { it.copy(offsetX = 0f, offsetY = 0f, resultUri = null) }
+        }
     }
 
     fun dismissError() = _state.update { it.copy(error = null) }
@@ -363,5 +413,47 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
         exportJob?.cancel()
         exportJob = null
         _state.update { it.copy(exporting = false, progress = 0) }
+    }
+
+    private fun applyLogoDefaults(logo: LogoAsset) {
+        val pos: WatermarkPosition
+        val size: Float
+        val ox: Float
+        val oy: Float
+        
+        when (logo.id) {
+            "logo_1.png" -> {
+                pos = WatermarkPosition.TOP_RIGHT
+                size = 0.23f
+                ox = -0.02f
+                oy = -0.02f
+            }
+            "logo_4.png" -> {
+                pos = WatermarkPosition.TOP_RIGHT
+                size = 0.15f
+                ox = -0.03f
+                oy = -0.02f
+            }
+            "logo_2.png", "logo_3.png" -> {
+                pos = WatermarkPosition.CENTER_TOP
+                size = 0.50f
+                ox = 0f
+                oy = 0.05f
+            }
+            else -> {
+                pos = WatermarkPosition.BOTTOM_RIGHT
+                size = InstagramMargins.logoWidth
+                ox = 0f
+                oy = 0f
+            }
+        }
+        _state.update {
+            it.copy(
+                position = pos,
+                logoWidthFraction = size,
+                offsetX = ox,
+                offsetY = oy
+            )
+        }
     }
 }
