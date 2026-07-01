@@ -53,5 +53,5 @@ object InstagramMargins {
 enum class CropPreset(val label: String, val aspectRatio: Float?) {
     ORIGINAL("Original", null),
     POST("Post (4:5)", 0.8f),
-    STORY("Story/Reel (9:16)", 0.5625f),
+    STORY("Story (9:16)", 0.5625f),
 }

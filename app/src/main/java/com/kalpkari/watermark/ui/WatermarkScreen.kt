@@ -1001,6 +1001,7 @@ private fun WatermarkPreview(
         modifier
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center
     ) {
         if (cropPreset != CropPreset.ORIGINAL) {
             val scaleFactor = maxWidth.value / cropW.value
