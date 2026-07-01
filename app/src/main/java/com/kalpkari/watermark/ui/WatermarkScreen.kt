@@ -263,6 +263,23 @@ private fun EditorLayout(
 ) {
     var isPanelExpanded by remember { mutableStateOf(true) }
 
+    // Backup crop states to support Discard/Cancel functionality
+    var backupPreset by remember { mutableStateOf<CropPreset?>(null) }
+    var backupScale by remember { mutableStateOf(1.0f) }
+    var backupPanX by remember { mutableStateOf(0f) }
+    var backupPanY by remember { mutableStateOf(0f) }
+    var backupRect by remember { mutableStateOf<RectF?>(null) }
+
+    LaunchedEffect(activeTab) {
+        if (activeTab == EditorTab.CROP) {
+            backupPreset = state.cropPreset
+            backupScale = state.cropScale
+            backupPanX = state.cropPanX
+            backupPanY = state.cropPanY
+            backupRect = state.cropRect
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -496,36 +513,42 @@ private fun EditorLayout(
                             EditorTab.CROP -> {
                                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     SectionLabel("Crop Preset")
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        CropPreset.entries.forEach { preset ->
+                                            FilterChip(
+                                                selected = preset == state.cropPreset,
+                                                onClick = {
+                                                    vm.onCropPresetChanged(preset)
+                                                },
+                                                label = { Text(preset.label) },
+                                                colors = chipColors
+                                            )
+                                        }
+                                    }
+                                    
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        horizontalArrangement = Arrangement.End,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            CropPreset.entries.forEach { preset ->
-                                                FilterChip(
-                                                    selected = preset == state.cropPreset,
-                                                    onClick = {
-                                                        vm.onCropPresetChanged(preset)
-                                                    },
-                                                    label = { Text(preset.label) },
-                                                    colors = chipColors
-                                                )
-                                            }
+                                        OutlinedButton(
+                                            onClick = {
+                                                backupPreset?.let { vm.onCropPresetChanged(it) }
+                                                vm.updateCropGeometry(backupScale, backupPanX, backupPanY, backupRect)
+                                                onTabSelect(EditorTab.LOGOS)
+                                            },
+                                            modifier = Modifier.height(36.dp)
+                                        ) {
+                                            Text("Cancel", color = Color.White)
                                         }
-
+                                        Spacer(Modifier.width(8.dp))
                                         Button(
                                             onClick = { onTabSelect(EditorTab.LOGOS) },
                                             modifier = Modifier.height(36.dp)
                                         ) {
-                                            Text("Apply", style = MaterialTheme.typography.bodyMedium)
+                                            Text("Apply")
                                         }
                                     }
-                                    Text(
-                                        text = "Drag to pan, pinch to zoom relative to crop box",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.6f)
-                                    )
                                 }
                             }
                         }
@@ -609,21 +632,25 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
     }
 
     if (activeTab == EditorTab.CROP && state.cropPreset != CropPreset.ORIGINAL) {
-        val minScale = maxOf(cropW.value / defaultW.value, cropH.value / defaultH.value)
-        var scale by remember(state.cropPreset, state.mediaUri) { mutableStateOf(state.cropScale) }
-        var offset by remember(state.cropPreset, state.mediaUri) { mutableStateOf(Offset(state.cropPanX, state.cropPanY)) }
+        val minScale = maxOf(
+            cropW.value / defaultW.value.coerceAtLeast(1f),
+            cropH.value / defaultH.value.coerceAtLeast(1f)
+        ).coerceAtLeast(1.0f)
+        
+        val scaleState = remember(state.cropPreset, state.mediaUri) { mutableStateOf(state.cropScale) }
+        val offsetState = remember(state.cropPreset, state.mediaUri) { mutableStateOf(Offset(state.cropPanX, state.cropPanY)) }
 
-        LaunchedEffect(scale, offset) {
+        LaunchedEffect(scaleState.value, offsetState.value) {
             val rect = calculateNormalizedCropRect(
                 defaultW = defaultW.value,
                 defaultH = defaultH.value,
                 cropW = cropW.value,
                 cropH = cropH.value,
-                scale = scale,
-                panX = offset.x,
-                panY = offset.y
+                scale = scaleState.value,
+                panX = offsetState.value.x,
+                panY = offsetState.value.y
             )
-            vm.updateCropGeometry(scale, offset.x, offset.y, rect)
+            vm.updateCropGeometry(scaleState.value, offsetState.value.x, offsetState.value.y, rect)
         }
 
         val density = LocalDensity.current
@@ -639,9 +666,9 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
                 background = preview,
                 mediaType = state.mediaType ?: MediaType.IMAGE,
                 exoPlayer = exoPlayer,
-                scale = scale,
-                panX = offset.x,
-                panY = offset.y,
+                scale = scaleState.value,
+                panX = offsetState.value.x,
+                panY = offsetState.value.y,
                 defaultW = defaultW,
                 defaultH = defaultH
             )
@@ -652,13 +679,15 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
                     .fillMaxSize()
                     .pointerInput(state.cropPreset, state.mediaUri) {
                         detectTransformGestures { _, pan, zoom, _ ->
-                            val newScale = (scale * zoom).coerceIn(minScale, 5.0f)
+                            val currentScale = scaleState.value
+                            val currentOffset = offsetState.value
+                            val newScale = (currentScale * zoom).coerceIn(minScale, 5.0f)
                             val maxPanX = (defaultW.value * newScale - cropW.value) / 2f
                             val maxPanY = (defaultH.value * newScale - cropH.value) / 2f
-                            val newPanX = (offset.x + pan.x / density.density).coerceIn(-maxPanX, maxPanX)
-                            val newPanY = (offset.y + pan.y / density.density).coerceIn(-maxPanY, maxPanY)
-                            scale = newScale
-                            offset = Offset(newPanX, newPanY)
+                            val newPanX = (currentOffset.x + pan.x / density.density).coerceIn(-maxPanX, maxPanX)
+                            val newPanY = (currentOffset.y + pan.y / density.density).coerceIn(-maxPanY, maxPanY)
+                            scaleState.value = newScale
+                            offsetState.value = Offset(newPanX, newPanY)
                         }
                     }
             )
