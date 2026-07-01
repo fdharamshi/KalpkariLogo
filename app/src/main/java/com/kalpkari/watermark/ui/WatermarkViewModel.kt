@@ -267,7 +267,16 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
         val r = MediaMetadataRetriever()
         return try {
             r.setDataSource(getApplication(), uri)
-            r.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            val raw = r.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: return null
+            val rot = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+            if (rot != 0) {
+                val matrix = android.graphics.Matrix().apply { postRotate(rot.toFloat()) }
+                val rotated = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, matrix, true)
+                if (rotated !== raw) raw.recycle()
+                rotated
+            } else {
+                raw
+            }
         } catch (t: Throwable) {
             null
         } finally {
