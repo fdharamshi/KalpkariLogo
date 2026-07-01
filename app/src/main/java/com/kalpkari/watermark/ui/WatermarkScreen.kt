@@ -13,6 +13,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -110,6 +112,14 @@ enum class EditorTab(val label: String) {
     ADJUST("Adjust"),
     CROP("Crop")
 }
+
+data class CropHistoryState(
+    val preset: CropPreset,
+    val scale: Float,
+    val panX: Float,
+    val panY: Float,
+    val rect: RectF?
+)
 
 @Composable
 fun WatermarkScreen(vm: WatermarkViewModel = viewModel()) {
@@ -270,6 +280,10 @@ private fun EditorLayout(
     var backupPanY by remember { mutableStateOf(0f) }
     var backupRect by remember { mutableStateOf<RectF?>(null) }
 
+    // History stacks for Undo / Redo
+    val undoStack = remember { mutableStateListOf<CropHistoryState>() }
+    val redoStack = remember { mutableStateListOf<CropHistoryState>() }
+
     LaunchedEffect(activeTab) {
         if (activeTab == EditorTab.CROP) {
             backupPreset = state.cropPreset
@@ -277,6 +291,8 @@ private fun EditorLayout(
             backupPanX = state.cropPanX
             backupPanY = state.cropPanY
             backupRect = state.cropRect
+            undoStack.clear()
+            redoStack.clear()
         }
     }
 
@@ -293,7 +309,7 @@ private fun EditorLayout(
                 .fillMaxSize()
                 .padding(
                     top = 56.dp,
-                    bottom = if (isPanelExpanded) 264.dp else 80.dp
+                    bottom = if (isPanelExpanded) 280.dp else 80.dp
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -307,7 +323,9 @@ private fun EditorLayout(
                     activeTab = activeTab,
                     exoPlayer = exoPlayer,
                     isPlaying = isPlaying,
-                    togglePlayPause = togglePlayPause
+                    togglePlayPause = togglePlayPause,
+                    undoStack = undoStack,
+                    redoStack = redoStack
                 )
             }
         }
@@ -404,7 +422,7 @@ private fun EditorLayout(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(160.dp)
+                            .height(180.dp)
                             .padding(horizontal = 20.dp, vertical = 4.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
@@ -432,8 +450,8 @@ private fun EditorLayout(
                             }
                             EditorTab.POSITION -> {
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                     SectionLabel("Quick Position")
-                                     PositionRow(state.position, onSelect = vm::onPositionSelected)
+                                    SectionLabel("Quick Position")
+                                    PositionRow(state.position, onSelect = vm::onPositionSelected)
                                 }
                             }
                             EditorTab.ADJUST -> {
@@ -518,6 +536,17 @@ private fun EditorLayout(
                                             FilterChip(
                                                 selected = preset == state.cropPreset,
                                                 onClick = {
+                                                    // Record to history before change
+                                                    val startState = CropHistoryState(
+                                                        preset = state.cropPreset,
+                                                        scale = state.cropScale,
+                                                        panX = state.cropPanX,
+                                                        panY = state.cropPanY,
+                                                        rect = state.cropRect
+                                                    )
+                                                    undoStack.add(startState)
+                                                    redoStack.clear()
+                                                    
                                                     vm.onCropPresetChanged(preset)
                                                 },
                                                 label = { Text(preset.label) },
@@ -528,25 +557,57 @@ private fun EditorLayout(
                                     
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.End,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                backupPreset?.let { vm.onCropPresetChanged(it) }
-                                                vm.updateCropGeometry(backupScale, backupPanX, backupPanY, backupRect)
-                                                onTabSelect(EditorTab.LOGOS)
-                                            },
-                                            modifier = Modifier.height(36.dp)
-                                        ) {
-                                            Text("Cancel", color = Color.White)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val current = CropHistoryState(state.cropPreset, state.cropScale, state.cropPanX, state.cropPanY, state.cropRect)
+                                                    val previous = undoStack.removeAt(undoStack.lastIndex)
+                                                    redoStack.add(current)
+                                                    
+                                                    vm.onCropPresetChanged(previous.preset)
+                                                    vm.updateCropGeometry(previous.scale, previous.panX, previous.panY, previous.rect)
+                                                },
+                                                enabled = undoStack.isNotEmpty(),
+                                                modifier = Modifier.height(36.dp)
+                                            ) {
+                                                Text("Undo", color = Color.White)
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    val current = CropHistoryState(state.cropPreset, state.cropScale, state.cropPanX, state.cropPanY, state.cropRect)
+                                                    val next = redoStack.removeAt(redoStack.lastIndex)
+                                                    undoStack.add(current)
+                                                    
+                                                    vm.onCropPresetChanged(next.preset)
+                                                    vm.updateCropGeometry(next.scale, next.panX, next.panY, next.rect)
+                                                },
+                                                enabled = redoStack.isNotEmpty(),
+                                                modifier = Modifier.height(36.dp)
+                                            ) {
+                                                Text("Redo", color = Color.White)
+                                            }
                                         }
-                                        Spacer(Modifier.width(8.dp))
-                                        Button(
-                                            onClick = { onTabSelect(EditorTab.LOGOS) },
-                                            modifier = Modifier.height(36.dp)
-                                        ) {
-                                            Text("Apply")
+
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    backupPreset?.let { vm.onCropPresetChanged(it) }
+                                                    vm.updateCropGeometry(backupScale, backupPanX, backupPanY, backupRect)
+                                                    onTabSelect(EditorTab.LOGOS)
+                                                },
+                                                modifier = Modifier.height(36.dp)
+                                            ) {
+                                                Text("Cancel", color = Color.White)
+                                            }
+                                            Button(
+                                                onClick = { onTabSelect(EditorTab.LOGOS) },
+                                                modifier = Modifier.height(36.dp)
+                                            ) {
+                                                Text("Apply")
+                                            }
                                         }
                                     }
                                 }
@@ -606,7 +667,9 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
     activeTab: EditorTab,
     exoPlayer: ExoPlayer?,
     isPlaying: Boolean,
-    togglePlayPause: () -> Unit
+    togglePlayPause: () -> Unit,
+    undoStack: androidx.compose.runtime.snapshots.SnapshotStateList<CropHistoryState>,
+    redoStack: androidx.compose.runtime.snapshots.SnapshotStateList<CropHistoryState>
 ) {
     val mediaW = preview.width.toFloat()
     val mediaH = preview.height.toFloat()
@@ -632,6 +695,7 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
     }
 
     if (activeTab == EditorTab.CROP && state.cropPreset != CropPreset.ORIGINAL) {
+        val density = LocalDensity.current
         val minScale = maxOf(
             cropW.value / defaultW.value.coerceAtLeast(1f),
             cropH.value / defaultH.value.coerceAtLeast(1f)
@@ -640,20 +704,24 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
         val scaleState = remember(state.cropPreset, state.mediaUri) { mutableStateOf(state.cropScale) }
         val offsetState = remember(state.cropPreset, state.mediaUri) { mutableStateOf(Offset(state.cropPanX, state.cropPanY)) }
 
+        // Sync local states if changed externally (e.g. via Undo/Redo)
+        LaunchedEffect(state.cropScale, state.cropPanX, state.cropPanY) {
+            scaleState.value = state.cropScale
+            offsetState.value = Offset(state.cropPanX, state.cropPanY)
+        }
+
         LaunchedEffect(scaleState.value, offsetState.value) {
             val rect = calculateNormalizedCropRect(
-                defaultW = defaultW.value,
-                defaultH = defaultH.value,
-                cropW = cropW.value,
-                cropH = cropH.value,
+                defaultWPx = defaultW.value * density.density,
+                defaultHPx = defaultH.value * density.density,
+                cropWPx = cropW.value * density.density,
+                cropHPx = cropH.value * density.density,
                 scale = scaleState.value,
-                panX = offsetState.value.x,
-                panY = offsetState.value.y
+                panXPx = offsetState.value.x,
+                panYPx = offsetState.value.y
             )
             vm.updateCropGeometry(scaleState.value, offsetState.value.x, offsetState.value.y, rect)
         }
-
-        val density = LocalDensity.current
 
         Box(
             modifier = Modifier
@@ -673,19 +741,59 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
                 defaultH = defaultH
             )
 
-            // Transparent overlay box to intercept and handle gestures (prevents AndroidView touch consumption)
+            // Transparent overlay box to intercept gestures and record Undo history
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .pointerInput(state.cropPreset, state.mediaUri) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val down = awaitFirstDown()
+                                
+                                val startState = CropHistoryState(
+                                    preset = state.cropPreset,
+                                    scale = scaleState.value,
+                                    panX = offsetState.value.x,
+                                    panY = offsetState.value.y,
+                                    rect = state.cropRect
+                                )
+                                
+                                var hasMoved = false
+                                do {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.any { it.previousPosition != it.position }) {
+                                        hasMoved = true
+                                    }
+                                } while (event.changes.any { it.pressed })
+                                
+                                if (hasMoved) {
+                                    val endState = CropHistoryState(
+                                        preset = state.cropPreset,
+                                        scale = scaleState.value,
+                                        panX = offsetState.value.x,
+                                        panY = offsetState.value.y,
+                                        rect = state.cropRect
+                                    )
+                                    if (endState != startState) {
+                                        undoStack.add(startState)
+                                        redoStack.clear()
+                                    }
+                                }
+                            }
+                        }
+                    }
                     .pointerInput(state.cropPreset, state.mediaUri) {
                         detectTransformGestures { _, pan, zoom, _ ->
                             val currentScale = scaleState.value
                             val currentOffset = offsetState.value
                             val newScale = (currentScale * zoom).coerceIn(minScale, 5.0f)
-                            val maxPanX = (defaultW.value * newScale - cropW.value) / 2f
-                            val maxPanY = (defaultH.value * newScale - cropH.value) / 2f
-                            val newPanX = (currentOffset.x + pan.x / density.density).coerceIn(-maxPanX, maxPanX)
-                            val newPanY = (currentOffset.y + pan.y / density.density).coerceIn(-maxPanY, maxPanY)
+                            
+                            val maxPanX = (defaultW.value * density.density * newScale - cropW.value * density.density) / 2f
+                            val maxPanY = (defaultH.value * density.density * newScale - cropH.value * density.density) / 2f
+                            
+                            val newPanX = (currentOffset.x + pan.x).coerceIn(-maxPanX, maxPanX)
+                            val newPanY = (currentOffset.y + pan.y).coerceIn(-maxPanY, maxPanY)
+                            
                             scaleState.value = newScale
                             offsetState.value = Offset(newPanX, newPanY)
                         }
@@ -806,7 +914,14 @@ private fun MediaViewport(
     modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .size(defaultW, defaultH)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationX = panX
+                translationY = panY
+            },
         contentAlignment = Alignment.Center
     ) {
         if (mediaType == MediaType.VIDEO && exoPlayer != null) {
@@ -815,21 +930,17 @@ private fun MediaViewport(
                     PlayerView(ctx).apply {
                         useController = false
                         player = exoPlayer
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
                     }
                 },
-                modifier = Modifier
-                    .size(defaultW * scale, defaultH * scale)
-                    .offset(panX.dp, panY.dp)
+                modifier = Modifier.fillMaxSize()
             )
         } else {
             Image(
                 bitmap = background.asImageBitmap(),
                 contentDescription = null,
-                modifier = Modifier
-                    .size(defaultW * scale, defaultH * scale)
-                    .offset(panX.dp, panY.dp),
-                contentScale = ContentScale.Fit
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.FillBounds
             )
         }
     }
@@ -1117,7 +1228,7 @@ private fun DialogOverlays(
                             cropPanY = state.cropPanY,
                             defaultW = fitW,
                             defaultH = fitH,
-                            cropW = croppedW, // In fullscreen lightbox, the crop box size matches the cropped container size!
+                            cropW = croppedW,
                             cropH = croppedH,
                             mediaType = state.mediaType ?: MediaType.IMAGE,
                             exoPlayer = exoPlayer,
@@ -1185,10 +1296,7 @@ private fun LogoRow(logos: List<LogoAsset>, selected: LogoAsset?, onSelect: (Log
 }
 
 @Composable
-private fun PositionRow(
-    selected: WatermarkPosition,
-    onSelect: (WatermarkPosition) -> Unit
-) {
+private fun PositionRow(selected: WatermarkPosition, onSelect: (WatermarkPosition) -> Unit) {
     val colors = FilterChipDefaults.filterChipColors(
         containerColor = Color.White.copy(alpha = 0.12f),
         labelColor = Color.White,
@@ -1208,24 +1316,24 @@ private fun PositionRow(
 }
 
 private fun calculateNormalizedCropRect(
-    defaultW: Float,
-    defaultH: Float,
-    cropW: Float,
-    cropH: Float,
+    defaultWPx: Float,
+    defaultHPx: Float,
+    cropWPx: Float,
+    cropHPx: Float,
     scale: Float,
-    panX: Float,
-    panY: Float
+    panXPx: Float,
+    panYPx: Float
 ): RectF {
-    val imgW = defaultW * scale
-    val imgH = defaultH * scale
+    val imgWPx = defaultWPx * scale
+    val imgHPx = defaultHPx * scale
 
-    val cropLeft = (imgW - cropW) / 2f - panX
-    val cropTop = (imgH - cropH) / 2f - panY
+    val cropLeft = (imgWPx - cropWPx) / 2f - panXPx
+    val cropTop = (imgHPx - cropHPx) / 2f - panYPx
 
-    val leftFraction = (cropLeft / imgW).coerceIn(0f, 1f)
-    val rightFraction = ((cropLeft + cropW) / imgW).coerceIn(0f, 1f)
-    val topFraction = (cropTop / imgH).coerceIn(0f, 1f)
-    val bottomFraction = ((cropTop + cropH) / imgH).coerceIn(0f, 1f)
+    val leftFraction = (cropLeft / imgWPx).coerceIn(0f, 1f)
+    val rightFraction = ((cropLeft + cropWPx) / imgWPx).coerceIn(0f, 1f)
+    val topFraction = (cropTop / imgHPx).coerceIn(0f, 1f)
+    val bottomFraction = ((cropTop + cropHPx) / imgHPx).coerceIn(0f, 1f)
 
     return RectF(leftFraction, topFraction, rightFraction, bottomFraction)
 }
