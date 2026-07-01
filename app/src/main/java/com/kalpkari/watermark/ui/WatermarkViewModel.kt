@@ -203,7 +203,35 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onCropPresetChanged(preset: CropPreset) {
-        _state.update { it.copy(cropPreset = preset, resultUri = null) }
+        val s = _state.value
+        val preview = s.previewBitmap
+        val rect = if (preset != CropPreset.ORIGINAL && preview != null) {
+            val mediaW = preview.width.toFloat()
+            val mediaH = preview.height.toFloat()
+            val mediaAspect = mediaW / mediaH
+            val cropAspect = preset.aspectRatio!!
+            
+            if (cropAspect > mediaAspect) {
+                val top = (1.0f - mediaAspect / cropAspect) / 2f
+                RectF(0f, top, 1f, 1f - top)
+            } else {
+                val left = (1.0f - cropAspect / mediaAspect) / 2f
+                RectF(left, 0f, 1f - left, 1f)
+            }
+        } else {
+            null
+        }
+
+        _state.update {
+            it.copy(
+                cropPreset = preset,
+                cropScale = 1.0f,
+                cropPanX = 0f,
+                cropPanY = 0f,
+                cropRect = rect,
+                resultUri = null
+            )
+        }
     }
 
     fun updateCropGeometry(scale: Float, panX: Float, panY: Float, rect: RectF?) {

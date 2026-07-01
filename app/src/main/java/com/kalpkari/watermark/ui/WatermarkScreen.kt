@@ -496,17 +496,29 @@ private fun EditorLayout(
                             EditorTab.CROP -> {
                                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     SectionLabel("Crop Preset")
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        CropPreset.entries.forEach { preset ->
-                                            FilterChip(
-                                                selected = preset == state.cropPreset,
-                                                onClick = {
-                                                    vm.onCropPresetChanged(preset)
-                                                    vm.updateCropGeometry(1.0f, 0f, 0f, null)
-                                                },
-                                                label = { Text(preset.label) },
-                                                colors = chipColors
-                                            )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            CropPreset.entries.forEach { preset ->
+                                                FilterChip(
+                                                    selected = preset == state.cropPreset,
+                                                    onClick = {
+                                                        vm.onCropPresetChanged(preset)
+                                                    },
+                                                    label = { Text(preset.label) },
+                                                    colors = chipColors
+                                                )
+                                            }
+                                        }
+
+                                        Button(
+                                            onClick = { onTabSelect(EditorTab.LOGOS) },
+                                            modifier = Modifier.height(36.dp)
+                                        ) {
+                                            Text("Apply", style = MaterialTheme.typography.bodyMedium)
                                         }
                                     }
                                     Text(
@@ -614,22 +626,13 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
             vm.updateCropGeometry(scale, offset.x, offset.y, rect)
         }
 
+        val density = LocalDensity.current
+
         Box(
             modifier = Modifier
                 .size(defaultW, defaultH)
                 .clip(RoundedCornerShape(12.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-                .pointerInput(state.cropPreset, state.mediaUri) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        val newScale = (scale * zoom).coerceIn(minScale, 5.0f)
-                        val maxPanX = (defaultW.value * newScale - cropW.value) / 2f
-                        val maxPanY = (defaultH.value * newScale - cropH.value) / 2f
-                        val newPanX = (offset.x + pan.x).coerceIn(-maxPanX, maxPanX)
-                        val newPanY = (offset.y + pan.y).coerceIn(-maxPanY, maxPanY)
-                        scale = newScale
-                        offset = Offset(newPanX, newPanY)
-                    }
-                },
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center
         ) {
             MediaViewport(
@@ -643,7 +646,23 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
                 defaultH = defaultH
             )
 
-            val density = LocalDensity.current
+            // Transparent overlay box to intercept and handle gestures (prevents AndroidView touch consumption)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(state.cropPreset, state.mediaUri) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            val newScale = (scale * zoom).coerceIn(minScale, 5.0f)
+                            val maxPanX = (defaultW.value * newScale - cropW.value) / 2f
+                            val maxPanY = (defaultH.value * newScale - cropH.value) / 2f
+                            val newPanX = (offset.x + pan.x / density.density).coerceIn(-maxPanX, maxPanX)
+                            val newPanY = (offset.y + pan.y / density.density).coerceIn(-maxPanY, maxPanY)
+                            scale = newScale
+                            offset = Offset(newPanX, newPanY)
+                        }
+                    }
+            )
+
             val cropBoxLeft = (defaultW.value - cropW.value) / 2f
             val cropBoxTop = (defaultH.value - cropH.value) / 2f
 
