@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base app theme (applied after the splash screen). -->
+    <style name="Theme.Kalpkari" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/rust</item>
+        <item name="android:navigationBarColor">@color/rust</item>
+        <item name="android:windowBackground">@color/rust</item>
+    </style>
+
+    <!-- Branded splash shown while the app process starts (Logo 4 on rust). -->
+    <style name="Theme.Kalpkari.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/rust</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/kalpkari_mark</item>
+        <item name="postSplashScreenTheme">@style/Theme.Kalpkari</item>
+    </style>
+</resources>

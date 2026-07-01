@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Kalpkari brand palette (from brand guidelines) -->
+    <color name="rust">#7D3208</color>
+    <color name="rust_dark">#5E2606</color>
+    <color name="rust_surface">#8A3A10</color>
+    <color name="cream">#DFD3C2</color>
+    <color name="cream_dim">#B7A892</color>
+</resources>
