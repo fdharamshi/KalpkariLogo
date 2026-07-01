@@ -1054,6 +1054,7 @@ private fun WatermarkPreview(
                 contentDescription = "Logo",
                 colorFilter = tintColor?.let { ColorFilter.tint(Color(it)) },
                 modifier = Modifier
+                    .align(Alignment.TopStart)
                     .offset(baseLeft + boxW * offsetX, baseTop + boxH * offsetY)
                     .size(logoW, logoH),
             )
