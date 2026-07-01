@@ -19,10 +19,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -46,15 +44,15 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -254,7 +252,7 @@ private fun LandingLayout(
 }
 
 @Composable
-private fun ColumnScope.EditorLayout(
+private fun EditorLayout(
     state: UiState,
     vm: WatermarkViewModel,
     activeTab: EditorTab,
@@ -263,220 +261,276 @@ private fun ColumnScope.EditorLayout(
     isPlaying: Boolean,
     togglePlayPause: () -> Unit
 ) {
-    val totalCount = state.mediaQueue.size
-    val currentIndex = state.currentQueueIndex + 1
+    var isPanelExpanded by remember { mutableStateOf(true) }
 
-    Row(
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        IconButton(onClick = vm::clearMedia) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-        
-        Column(
-            modifier = Modifier.weight(1f),
-            horizontalAlignment = Alignment.CenterHorizontally
+        val preview = state.previewBitmap
+
+        // 1. Preview Workspace (Fits area above the bottom panel overlay)
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    top = 56.dp,
+                    bottom = if (isPanelExpanded) 264.dp else 80.dp
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "WATERMARK STUDIO",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            if (totalCount > 1) {
-                Text(
-                    text = "Editing $currentIndex of $totalCount",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            if (state.loadingPreview || preview == null) {
+                BrandLoader(Modifier.fillMaxSize())
+            } else {
+                PreviewWorkspace(
+                    preview = preview,
+                    state = state,
+                    vm = vm,
+                    activeTab = activeTab,
+                    exoPlayer = exoPlayer,
+                    isPlaying = isPlaying,
+                    togglePlayPause = togglePlayPause
                 )
             }
         }
 
-        Button(
-            onClick = vm::export,
-            enabled = state.canExport,
-            modifier = Modifier.padding(end = 8.dp)
-        ) {
-            Text("Export")
-        }
-    }
-
-    BoxWithConstraints(
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        val preview = state.previewBitmap
-        if (state.loadingPreview || preview == null) {
-            BrandLoader(Modifier.fillMaxSize())
-        } else {
-            PreviewWorkspace(
-                preview = preview,
-                state = state,
-                vm = vm,
-                activeTab = activeTab,
-                exoPlayer = exoPlayer,
-                isPlaying = isPlaying,
-                togglePlayPause = togglePlayPause
-            )
-        }
-    }
-
-    Surface(
-        tonalElevation = 8.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-    ) {
-        Column(
+        // 2. Header Bar Overlay
+        Row(
             modifier = Modifier
+                .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .padding(bottom = 12.dp)
+                .height(56.dp)
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.9f))
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                contentAlignment = Alignment.CenterStart
+            val totalCount = state.mediaQueue.size
+            val currentIndex = state.currentQueueIndex + 1
+
+            IconButton(onClick = vm::clearMedia) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                when (activeTab) {
-                    EditorTab.LOGOS -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            SectionLabel("Select Logo")
-                            LogoRow(state.logos, state.selectedLogo, onSelect = vm::onLogoSelected)
-                        }
-                    }
-                    EditorTab.COLOR -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            SectionLabel("Logo Color")
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                LogoTint.entries.forEach { tint ->
-                                    FilterChip(
-                                        selected = tint == state.tint,
-                                        onClick = { vm.onTintSelected(tint) },
-                                        label = { Text(tint.label) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    EditorTab.POSITION -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            SectionLabel("Quick Position")
-                            PositionRow(state.position, onSelect = vm::onPositionSelected)
-                        }
-                    }
-                    EditorTab.ADJUST -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                SectionLabel("Size & Position Adjust")
-                                OutlinedButton(
-                                    onClick = vm::resetOffsets,
-                                    enabled = !state.exporting && (state.offsetX != 0f || state.offsetY != 0f),
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Text("Reset", style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Logo Size", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("${(state.logoWidthFraction * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                }
-                                Slider(
-                                    value = state.logoWidthFraction,
-                                    onValueChange = vm::onLogoSizeChanged,
-                                    valueRange = InstagramMargins.MIN_LOGO_WIDTH..InstagramMargins.MAX_LOGO_WIDTH,
-                                    enabled = !state.exporting,
-                                )
-                            }
-
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Horizontal Nudge", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(String.format("%.0f%%", state.offsetX * 100), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                }
-                                Slider(
-                                    value = state.offsetX,
-                                    onValueChange = { vm.onOffsetChanged(it, state.offsetY) },
-                                    valueRange = -0.4f..0.4f,
-                                    enabled = !state.exporting,
-                                )
-                            }
-
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Vertical Nudge", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(String.format("%.0f%%", state.offsetY * 100), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                                }
-                                Slider(
-                                    value = state.offsetY,
-                                    onValueChange = { vm.onOffsetChanged(state.offsetX, it) },
-                                    valueRange = -0.4f..0.4f,
-                                    enabled = !state.exporting,
-                                )
-                            }
-                        }
-                    }
-                    EditorTab.CROP -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            SectionLabel("Crop Preset")
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                CropPreset.entries.forEach { preset ->
-                                    FilterChip(
-                                        selected = preset == state.cropPreset,
-                                        onClick = {
-                                            vm.onCropPresetChanged(preset)
-                                            vm.updateCropGeometry(1.0f, 0f, 0f, null)
-                                        },
-                                        label = { Text(preset.label) }
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "Drag to pan, pinch to zoom relative to crop box",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                Text(
+                    text = "WATERMARK STUDIO",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (totalCount > 1) {
+                    Text(
+                        text = "Editing $currentIndex of $totalCount",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Button(
+                onClick = vm::export,
+                enabled = state.canExport,
+                modifier = Modifier.padding(end = 8.dp)
+            ) {
+                Text("Export")
+            }
+        }
 
-            TabBar(activeTab = activeTab, onTabSelect = onTabSelect)
+        // 3. Premium Glassmorphic Bottom Panel
+        val chipColors = FilterChipDefaults.filterChipColors(
+            containerColor = Color.White.copy(alpha = 0.12f),
+            labelColor = Color.White,
+            selectedContainerColor = MaterialTheme.colorScheme.primary,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+        )
+
+        Surface(
+            tonalElevation = 8.dp,
+            color = Color.Black.copy(alpha = 0.72f),
+            contentColor = Color.White,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            ) {
+                // Minimize drag line
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(24.dp)
+                        .clickable { isPanelExpanded = !isPanelExpanded },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp, 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color.White.copy(alpha = 0.4f))
+                    )
+                }
+
+                if (isPanelExpanded) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        when (activeTab) {
+                            EditorTab.LOGOS -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    SectionLabel("Select Logo")
+                                    LogoRow(state.logos, state.selectedLogo, onSelect = vm::onLogoSelected)
+                                }
+                            }
+                            EditorTab.COLOR -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    SectionLabel("Logo Color")
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        LogoTint.entries.forEach { tint ->
+                                            FilterChip(
+                                                selected = tint == state.tint,
+                                                onClick = { vm.onTintSelected(tint) },
+                                                label = { Text(tint.label) },
+                                                colors = chipColors
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            EditorTab.POSITION -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                     SectionLabel("Quick Position")
+                                     PositionRow(state.position, onSelect = vm::onPositionSelected)
+                                }
+                            }
+                            EditorTab.ADJUST -> {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState()),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        SectionLabel("Size & Position Adjust")
+                                        OutlinedButton(
+                                            onClick = vm::resetOffsets,
+                                            enabled = !state.exporting && (state.offsetX != 0f || state.offsetY != 0f),
+                                            modifier = Modifier.height(30.dp)
+                                        ) {
+                                            Text("Reset", style = MaterialTheme.typography.bodySmall, color = Color.White)
+                                        }
+                                    }
+
+                                    Column {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Logo Size", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
+                                            Text("${(state.logoWidthFraction * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                        }
+                                        Slider(
+                                            value = state.logoWidthFraction,
+                                            onValueChange = vm::onLogoSizeChanged,
+                                            valueRange = InstagramMargins.MIN_LOGO_WIDTH..InstagramMargins.MAX_LOGO_WIDTH,
+                                            enabled = !state.exporting,
+                                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = MaterialTheme.colorScheme.primary)
+                                        )
+                                    }
+
+                                    Column {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Horizontal Nudge", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
+                                            Text(String.format("%.0f%%", state.offsetX * 100), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                        }
+                                        Slider(
+                                            value = state.offsetX,
+                                            onValueChange = { vm.onOffsetChanged(it, state.offsetY) },
+                                            valueRange = -0.4f..0.4f,
+                                            enabled = !state.exporting,
+                                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = MaterialTheme.colorScheme.primary)
+                                        )
+                                    }
+
+                                    Column {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Vertical Nudge", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
+                                            Text(String.format("%.0f%%", state.offsetY * 100), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                        }
+                                        Slider(
+                                            value = state.offsetY,
+                                            onValueChange = { vm.onOffsetChanged(state.offsetX, it) },
+                                            valueRange = -0.4f..0.4f,
+                                            enabled = !state.exporting,
+                                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = MaterialTheme.colorScheme.primary)
+                                        )
+                                    }
+                                }
+                            }
+                            EditorTab.CROP -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    SectionLabel("Crop Preset")
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        CropPreset.entries.forEach { preset ->
+                                            FilterChip(
+                                                selected = preset == state.cropPreset,
+                                                onClick = {
+                                                    vm.onCropPresetChanged(preset)
+                                                    vm.updateCropGeometry(1.0f, 0f, 0f, null)
+                                                },
+                                                label = { Text(preset.label) },
+                                                colors = chipColors
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = "Drag to pan, pinch to zoom relative to crop box",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                TabBar(activeTab = activeTab, onTabSelect = { tab ->
+                    if (activeTab == tab) {
+                        isPanelExpanded = !isPanelExpanded
+                    } else {
+                        onTabSelect(tab)
+                        isPanelExpanded = true
+                    }
+                })
+            }
         }
     }
 }
@@ -486,14 +540,14 @@ private fun TabBar(activeTab: EditorTab, onTabSelect: (EditorTab) -> Unit) {
     TabRow(
         selectedTabIndex = activeTab.ordinal,
         containerColor = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.primary,
+        contentColor = Color.White,
         modifier = Modifier.fillMaxWidth()
     ) {
         EditorTab.entries.forEach { tab ->
             Tab(
                 selected = activeTab == tab,
                 onClick = { onTabSelect(tab) },
-                text = { Text(tab.label, style = MaterialTheme.typography.labelMedium) },
+                text = { Text(tab.label, style = MaterialTheme.typography.labelMedium, color = Color.White) },
                 icon = {
                     val icon = when (tab) {
                         EditorTab.LOGOS -> Icons.Default.Image
@@ -502,7 +556,7 @@ private fun TabBar(activeTab: EditorTab, onTabSelect: (EditorTab) -> Unit) {
                         EditorTab.ADJUST -> Icons.Default.Tune
                         EditorTab.CROP -> Icons.Default.Crop
                     }
-                    Icon(imageVector = icon, contentDescription = tab.label)
+                    Icon(imageVector = icon, contentDescription = tab.label, tint = Color.White)
                 }
             )
         }
@@ -527,17 +581,22 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
     val (defaultW, defaultH) = if (mediaAspect > parentAspect) {
         maxWidth to (maxWidth.value / mediaAspect).dp
     } else {
-        maxHeight to (maxHeight.value * mediaAspect).dp
+        (maxHeight.value * mediaAspect).dp to maxHeight
+    }
+
+    val cropPreset = state.cropPreset
+    val (cropW, cropH) = if (cropPreset != CropPreset.ORIGINAL) {
+        val cropAspect = cropPreset.aspectRatio!!
+        if (cropAspect > mediaAspect) {
+            defaultW to (defaultW.value / cropAspect).dp
+        } else {
+            (defaultH.value * cropAspect).dp to defaultH
+        }
+    } else {
+        defaultW to defaultH
     }
 
     if (activeTab == EditorTab.CROP && state.cropPreset != CropPreset.ORIGINAL) {
-        val cropAspect = state.cropPreset.aspectRatio!!
-        val (cropW, cropH) = if (cropAspect > mediaAspect) {
-            defaultW to (defaultW.value / cropAspect).dp
-        } else {
-            defaultH to (defaultH.value * cropAspect).dp
-        }
-
         val minScale = maxOf(cropW.value / defaultW.value, cropH.value / defaultH.value)
         var scale by remember(state.cropPreset, state.mediaUri) { mutableStateOf(state.cropScale) }
         var offset by remember(state.cropPreset, state.mediaUri) { mutableStateOf(Offset(state.cropPanX, state.cropPanY)) }
@@ -602,7 +661,7 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
                     val boxSize = androidx.compose.ui.geometry.Size(boxWPx, boxHPx)
                     val boxTopLeft = Offset(boxLeftPx, boxTopPx)
 
-                    drawRect(Color.Black.copy(alpha = 0.6f))
+                    drawRect(Color.Black.copy(alpha = 0.65f))
                     drawRect(
                         color = Color.Transparent,
                         topLeft = boxTopLeft,
@@ -633,21 +692,9 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
             }
         }
     } else {
-        val cropPreset = state.cropPreset
-        val (croppedW, croppedH) = if (cropPreset != CropPreset.ORIGINAL) {
-            val cropAspect = cropPreset.aspectRatio!!
-            if (cropAspect > mediaAspect) {
-                defaultW to (defaultW.value / cropAspect).dp
-            } else {
-                defaultH to (defaultH.value * cropAspect).dp
-            }
-        } else {
-            defaultW to defaultH
-        }
-
         Box(
             modifier = Modifier
-                .size(croppedW, croppedH)
+                .size(cropW, cropH)
                 .clickable { vm.setExpandedPreviewOpen(true) },
             contentAlignment = Alignment.Center
         ) {
@@ -666,6 +713,8 @@ private fun BoxWithConstraintsScope.PreviewWorkspace(
                 cropPanY = state.cropPanY,
                 defaultW = defaultW,
                 defaultH = defaultH,
+                cropW = cropW,
+                cropH = cropH,
                 mediaType = state.mediaType ?: MediaType.IMAGE,
                 exoPlayer = exoPlayer
             )
@@ -718,7 +767,7 @@ private fun MediaViewport(
                     PlayerView(ctx).apply {
                         useController = false
                         player = exoPlayer
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
                 },
                 modifier = Modifier
@@ -732,7 +781,7 @@ private fun MediaViewport(
                 modifier = Modifier
                     .size(defaultW * scale, defaultH * scale)
                     .offset(panX.dp, panY.dp),
-                contentScale = ContentScale.FillBounds
+                contentScale = ContentScale.Fit
             )
         }
     }
@@ -754,6 +803,8 @@ private fun WatermarkPreview(
     cropPanY: Float,
     defaultW: Dp,
     defaultH: Dp,
+    cropW: Dp,
+    cropH: Dp,
     mediaType: MediaType,
     exoPlayer: ExoPlayer?,
     modifier: Modifier = Modifier
@@ -764,17 +815,16 @@ private fun WatermarkPreview(
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
     ) {
         if (cropPreset != CropPreset.ORIGINAL) {
-            val scaleFactorW = maxWidth.value / defaultW.value
-            val scaleFactorH = maxHeight.value / defaultH.value
+            val scaleFactor = maxWidth.value / cropW.value
             MediaViewport(
                 background = background,
                 mediaType = mediaType,
                 exoPlayer = exoPlayer,
                 scale = cropScale,
-                panX = cropPanX * scaleFactorW,
-                panY = cropPanY * scaleFactorH,
-                defaultW = defaultW * scaleFactorW,
-                defaultH = defaultH * scaleFactorH
+                panX = cropPanX * scaleFactor,
+                panY = cropPanY * scaleFactor,
+                defaultW = (defaultW.value * scaleFactor).dp,
+                defaultH = (defaultH.value * scaleFactor).dp
             )
         } else {
             MediaViewport(
@@ -989,7 +1039,7 @@ private fun DialogOverlays(
                         val (fitW, fitH) = if (mediaAspect > parentAspect) {
                             maxWidth to (maxWidth.value / mediaAspect).dp
                         } else {
-                            maxHeight to (maxHeight.value * mediaAspect).dp
+                            (maxHeight.value * mediaAspect).dp to maxHeight
                         }
 
                         val cropPreset = state.cropPreset
@@ -998,7 +1048,7 @@ private fun DialogOverlays(
                             if (cropAspect > mediaAspect) {
                                 fitW to (fitW.value / cropAspect).dp
                             } else {
-                                fitH to (fitH.value * cropAspect).dp
+                                (fitH.value * cropAspect).dp to fitH
                             }
                         } else {
                             fitW to fitH
@@ -1019,6 +1069,8 @@ private fun DialogOverlays(
                             cropPanY = state.cropPanY,
                             defaultW = fitW,
                             defaultH = fitH,
+                            cropW = croppedW, // In fullscreen lightbox, the crop box size matches the cropped container size!
+                            cropH = croppedH,
                             mediaType = state.mediaType ?: MediaType.IMAGE,
                             exoPlayer = exoPlayer,
                             modifier = Modifier.size(croppedW, croppedH)
@@ -1071,7 +1123,7 @@ private fun LogoRow(logos: List<LogoAsset>, selected: LogoAsset?, onSelect: (Log
                 modifier = Modifier
                     .size(72.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .background(Color.White.copy(alpha = 0.12f))
                     .border(
                         width = if (isSel) 3.dp else 1.dp,
                         color = if (isSel) MaterialTheme.colorScheme.primary else Color.LightGray,
@@ -1085,13 +1137,23 @@ private fun LogoRow(logos: List<LogoAsset>, selected: LogoAsset?, onSelect: (Log
 }
 
 @Composable
-private fun PositionRow(selected: WatermarkPosition, onSelect: (WatermarkPosition) -> Unit) {
+private fun PositionRow(
+    selected: WatermarkPosition,
+    onSelect: (WatermarkPosition) -> Unit
+) {
+    val colors = FilterChipDefaults.filterChipColors(
+        containerColor = Color.White.copy(alpha = 0.12f),
+        labelColor = Color.White,
+        selectedContainerColor = MaterialTheme.colorScheme.primary,
+        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+    )
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(WatermarkPosition.entries.toList()) { pos ->
             FilterChip(
                 selected = pos == selected,
                 onClick = { onSelect(pos) },
                 label = { Text(pos.label) },
+                colors = colors
             )
         }
     }
