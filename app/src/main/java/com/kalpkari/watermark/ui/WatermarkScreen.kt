@@ -461,7 +461,7 @@ private fun EditorLayout(
                             EditorTab.ADJUST -> {
                                 Column(
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .fillMaxWidth()
                                         .verticalScroll(rememberScrollState()),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
