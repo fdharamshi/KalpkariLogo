@@ -426,8 +426,7 @@ private fun EditorLayout(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(180.dp)
-                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
                         when (activeTab) {
